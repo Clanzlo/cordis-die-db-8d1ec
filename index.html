@@ -11,7 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
-    <!-- FIREBASE SDK -->
+    <!-- FIREBASE SDK С ЛОГИРОВАНИЕМ -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getDatabase, ref, set, onValue, update, remove, get } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
@@ -26,18 +26,18 @@
             appId: "1:865729923182:web:8625c773868e68fe14be7f"
         };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-
-        // Экспортируем функции базы данных в глобальную область
-        window.fb = { db, ref, set, onValue, update, remove, get };
-        
-        // Сигнал о том, что Firebase готов
-        window.fbReady = true;
+        try {
+            const app = initializeApp(firebaseConfig);
+            const db = getDatabase(app);
+            window.fb = { db, ref, set, onValue, update, remove, get };
+            console.log("[FIREBASE] Инициализация успешна");
+        } catch (e) {
+            console.error("[FIREBASE] Ошибка инициализации:", e);
+        }
     </script>
 
     <style>
-        /* ... [Весь CSS стиль остается точно таким же] ... */
+        /* ... [Весь CSS стиль остается точно таким же, как в предыдущих версиях] ... */
         * { margin:0; padding:0; box-sizing:border-box; }
         :root { --bg-primary: #0a0a0a; --bg-secondary: #111111; --bg-tertiary: #1a1a1a; --text-primary: #ffffff; --text-secondary: #cccccc; --text-muted: #888888; --error-red: #ff1a1a; --error-dark: #cc0000; --error-bright: #ff4444; --glitch-cyan: #00ffff; --success-green: #00ff00; --warning-yellow: #ffcc00; --border-dim: #333333; --font-mono: 'JetBrains Mono', monospace; --font-display: 'Share Tech Mono', monospace; }
         html, body { overflow-x: hidden; }
@@ -364,9 +364,11 @@
 
     function createInitialDates() { const s = new Date(); s.setHours(0,0,0,0); return Array.from({length:7},(_,i)=>{ const d=new Date(s); d.setDate(s.getDate()+i); return d; }); }
 
-    // --- FIREBASE SYNC FUNCTIONS ---
+    // --- FIREBASE SYNC FUNCTIONS WITH LOGGING ---
     function saveToFirebase() {
-        if (!window.fb || !currentUser || currentUser.role === 'viewer') return;
+        if (!window.fb) { console.warn("[FB SAVE] Firebase not ready"); return; }
+        if (!currentUser || currentUser.role === 'viewer') { console.warn("[FB SAVE] Viewer mode, skip save"); return; }
+        
         const data = {
             players: PLAYERS,
             matrix: matrix,
@@ -377,19 +379,27 @@
             playerComments: playerComments,
             lastUpdated: Date.now()
         };
+        
+        console.log("[FB SAVE] Attempting to save data for group:", currentGroup);
         window.fb.set(window.fb.ref(window.fb.db, `groups/${currentGroup}`), data)
-            .then(() => console.log('Data synced to Firebase'))
-            .catch(err => console.error('Firebase sync error:', err));
+            .then(() => console.log("[FB SAVE] SUCCESS! Data synced."))
+            .catch(err => console.error("[FB SAVE] FAILED!", err));
     }
 
     function loadFromFirebase() {
-        if (!window.fb) return;
+        if (!window.fb) { console.warn("[FB LOAD] Firebase not ready"); return; }
         
-        if (fbUnsubscribe) fbUnsubscribe();
+        if (fbUnsubscribe) {
+            console.log("[FB LOAD] Unsubscribing from previous listener");
+            fbUnsubscribe();
+        }
 
+        console.log("[FB LOAD] Subscribing to group:", currentGroup);
         const groupRef = window.fb.ref(window.fb.db, `groups/${currentGroup}`);
         fbUnsubscribe = window.fb.onValue(groupRef, (snapshot) => {
             const data = snapshot.val();
+            console.log("[FB LOAD] Received data:", data ? "YES (" + Object.keys(data).length + " keys)" : "NULL");
+            
             if (data) {
                 PLAYERS = data.players || [];
                 matrix = data.matrix || [];
@@ -409,10 +419,16 @@
                     groups[currentGroup].playerComments = playerComments;
                 }
                 
+                console.log("[FB LOAD] Updating UI with", PLAYERS.length, "players and", dates.length, "dates");
                 renderTable();
                 renderCalendar();
                 renderGroupsBar();
+            } else {
+                console.warn("[FB LOAD] No data found in Firebase for this group!");
             }
+        }, (error) => {
+            console.error("[FB LOAD] LISTENER ERROR:", error);
+            showToast("Ошибка подключения к базе: " + error.message, "ОШИБКА");
         });
     }
 
@@ -420,10 +436,12 @@
         const localData = localStorage.getItem('error_journal_groups');
         if (localData && window.fb && currentUser && currentUser.role !== 'viewer') {
             try {
+                console.log("[MIGRATE] Checking for local data migration...");
                 const parsed = JSON.parse(localData);
                 if (parsed && parsed.default) {
                     const existing = await window.fb.get(window.fb.ref(window.fb.db, 'groups/default'));
                     if (!existing.val()) {
+                        console.log("[MIGRATE] Local data found, pushing to Firebase...");
                         const g = parsed.default;
                         const data = {
                             players: g.players || [],
@@ -436,12 +454,15 @@
                             lastUpdated: Date.now()
                         };
                         await window.fb.set(window.fb.ref(window.fb.db, 'groups/default'), data);
+                        console.log("[MIGRATE] SUCCESS! Local data migrated.");
                         showToast('Локальные данные перенесены в облако', 'УСПЕШНО');
                         playSuccessSound();
+                    } else {
+                        console.log("[MIGRATE] Firebase already has data, skipping migration.");
                     }
                 }
             } catch (e) {
-                console.error('Migration error:', e);
+                console.error('[MIGRATE] Error:', e);
             }
         }
     }
