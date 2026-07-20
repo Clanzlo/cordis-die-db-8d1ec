@@ -467,10 +467,24 @@
         }
     }
 
-    function loadGroup(gid) { 
-        const g = groups[gid]; if(!g) return; 
+        function loadGroup(gid) { 
+        console.log(`[LOAD GROUP] Loading group: ${gid}`);
+        const g = groups[gid]; if(!g) { console.warn(`[LOAD GROUP] Group ${gid} not found!`); return; } 
+        
+        // Сохраняем текущие локальные данные перед перезаписью (на случай если Firebase еще не ответил)
+        const localPlayers = [...PLAYERS];
+        const localDates = [...dates];
+        
         PLAYERS=g.players||[]; dates=(g.dates||[]).map(d=>new Date(d)); matrix=g.matrix||[]; dateNotes=g.dateNotes||{}; datePhotos=g.photos||{}; statusComments=g.comments||{}; playerComments=g.playerComments||{}; currentGroup=gid; 
-        if(dates.length===0) { dates=createInitialDates(); } 
+        
+        console.log(`[LOAD GROUP] Local data before FB sync: ${localPlayers.length} players, ${localDates.length} dates`);
+        
+        if(dates.length===0) { 
+            console.log(`[LOAD GROUP] No local dates, creating initial dates`);
+            dates=createInitialDates(); 
+        } 
+        
+        console.log(`[LOAD GROUP] Calling loadFromFirebase for group: ${gid}`);
         loadFromFirebase();
     }
 
