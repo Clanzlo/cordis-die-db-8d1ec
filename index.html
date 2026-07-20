@@ -1427,6 +1427,50 @@
     } else {
         setTimeout(initParticles, 100);
     }
+    // ... (твой предыдущий код) ...
+    
+    loadUsers(); loadSession(); render();
+    if(document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initParticles);
+    } else {
+        setTimeout(initParticles, 100);
+    }
+
+    // === ВСТАВЛЯТЬ ВОТ СЮДА ===
+    setTimeout(() => {
+        if (window.fb && window.fbReady) {
+            console.log("[AUTO-LOAD] Firebase ready, forcing data load for group 'default'");
+            const groupRef = window.fb.ref(window.fb.db, `groups/default`);
+            window.fb.onValue(groupRef, (snapshot) => {
+                const data = snapshot.val();
+                console.log("[AUTO-LOAD] Received data:", data ? "YES" : "NULL");
+                if (data) {
+                    PLAYERS = data.players || [];
+                    matrix = data.matrix || [];
+                    dates = (data.dates || []).map(t => new Date(t));
+                    dateNotes = data.dateNotes || {};
+                    datePhotos = data.photos || {};
+                    statusComments = data.comments || {};
+                    playerComments = data.playerComments || {};
+                    if(groups['default']) {
+                        groups['default'].players = PLAYERS;
+                        groups['default'].matrix = matrix;
+                        groups['default'].dates = dates;
+                        groups['default'].dateNotes = dateNotes;
+                        groups['default'].photos = datePhotos;
+                        groups['default'].comments = statusComments;
+                        groups['default'].playerComments = playerComments;
+                    }
+                    if (document.getElementById('tableBody')) {
+                        renderTable();
+                        renderCalendar();
+                        renderGroupsBar();
+                    }
+                }
+            });
+        }
+    }, 1000);
+    // === КОНЕЦ ВСТАВКИ ===
 })();
 </script>
 </body>
