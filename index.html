@@ -29,12 +29,15 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // Экспортируем функции базы данных в глобальную область для использования в основном скрипте
+        // Экспортируем функции базы данных в глобальную область
         window.fb = { db, ref, set, onValue, update, remove, get };
+        
+        // Сигнал о том, что Firebase готов
+        window.fbReady = true;
     </script>
 
     <style>
-        /* ... [Весь CSS стиль остается точно таким же, как в предыдущем коде] ... */
+        /* ... [Весь CSS стиль остается точно таким же] ... */
         * { margin:0; padding:0; box-sizing:border-box; }
         :root { --bg-primary: #0a0a0a; --bg-secondary: #111111; --bg-tertiary: #1a1a1a; --text-primary: #ffffff; --text-secondary: #cccccc; --text-muted: #888888; --error-red: #ff1a1a; --error-dark: #cc0000; --error-bright: #ff4444; --glitch-cyan: #00ffff; --success-green: #00ff00; --warning-yellow: #ffcc00; --border-dim: #333333; --font-mono: 'JetBrains Mono', monospace; --font-display: 'Share Tech Mono', monospace; }
         html, body { overflow-x: hidden; }
@@ -307,7 +310,7 @@
     let globalNotes = localStorage.getItem('error_global_notes') || '';
     let calendarDisplayMonth = new Date().getMonth(), calendarDisplayYear = new Date().getFullYear();
     let lastAlertedEvents = new Set();
-    let fbUnsubscribe = null; // Для отписки от слушателя Firebase при выходе
+    let fbUnsubscribe = null; 
 
     const STATUS_MAP = { 
         dash: { display:'ПУСТО', full:'[ПУСТО] НЕТ ДАННЫХ', class:'ERR_NULL', icon:'fa-minus', color:'#666666' }, 
@@ -382,14 +385,12 @@
     function loadFromFirebase() {
         if (!window.fb) return;
         
-        // Отписываемся от предыдущего слушателя, если он был
         if (fbUnsubscribe) fbUnsubscribe();
 
         const groupRef = window.fb.ref(window.fb.db, `groups/${currentGroup}`);
         fbUnsubscribe = window.fb.onValue(groupRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
-                // Обновляем локальные переменные данными из облака
                 PLAYERS = data.players || [];
                 matrix = data.matrix || [];
                 dates = (data.dates || []).map(t => new Date(t));
@@ -398,7 +399,6 @@
                 statusComments = data.comments || {};
                 playerComments = data.playerComments || {};
                 
-                // Обновляем структуру groups для совместимости с остальным кодом
                 if(groups[currentGroup]) {
                     groups[currentGroup].players = PLAYERS;
                     groups[currentGroup].matrix = matrix;
@@ -409,7 +409,6 @@
                     groups[currentGroup].playerComments = playerComments;
                 }
                 
-                // Перерисовываем интерфейс
                 renderTable();
                 renderCalendar();
                 renderGroupsBar();
@@ -417,7 +416,6 @@
         });
     }
 
-    // Миграция данных из localStorage в Firebase при первом запуске
     async function migrateLocalStorageToFirebase() {
         const localData = localStorage.getItem('error_journal_groups');
         if (localData && window.fb && currentUser && currentUser.role !== 'viewer') {
@@ -426,7 +424,6 @@
                 if (parsed && parsed.default) {
                     const existing = await window.fb.get(window.fb.ref(window.fb.db, 'groups/default'));
                     if (!existing.val()) {
-                        // Если в базе пусто, заливаем локальные данные
                         const g = parsed.default;
                         const data = {
                             players: g.players || [],
@@ -453,20 +450,16 @@
         const g = groups[gid]; if(!g) return; 
         PLAYERS=g.players||[]; dates=(g.dates||[]).map(d=>new Date(d)); matrix=g.matrix||[]; dateNotes=g.dateNotes||{}; datePhotos=g.photos||{}; statusComments=g.comments||{}; playerComments=g.playerComments||{}; currentGroup=gid; 
         if(dates.length===0) { dates=createInitialDates(); } 
-        // Подключаемся к Firebase для этой группы
         loadFromFirebase();
     }
 
     function saveCurrentGroup() { 
-        // Сохраняем локально для мгновенного UI
         groups[currentGroup]={name:groups[currentGroup].name,players:PLAYERS,dates,matrix,dateNotes,photos:datePhotos,comments:statusComments,playerComments:playerComments}; 
-        // И синхронизируем с облаком
         saveToFirebase(); 
     }
 
     function saveData() { 
-        // localStorage больше не используется для основных данных, но оставляем для логов и заметок
-        // localStorage.setItem('error_journal_groups', JSON.stringify(groups)); 
+        // localStorage больше не используется для основных данных
     }
 
     function switchGroup(gid) { 
@@ -485,7 +478,6 @@
         const n=prompt('[СОЗДАТЬ] Название группы:'); if(!n) return; 
         const id='group_'+Date.now(); 
         groups[id]={name:n,players:[],matrix:[],dates:createInitialDates(),dateNotes:{},photos:{},comments:{},playerComments:{}}; 
-        // Создаем группу в Firebase
         if(window.fb && currentUser && currentUser.role !== 'viewer') {
             const data = {
                 players: [], matrix: [], dates: createInitialDates().map(d=>d.getTime()),
@@ -506,7 +498,6 @@
         if(confirm(`Удалить группу "${groups[gid].name}"?`)) { 
             const name=groups[gid].name; 
             delete groups[gid]; 
-            // Удаляем из Firebase
             if(window.fb && currentUser && currentUser.role !== 'viewer') {
                 window.fb.remove(window.fb.ref(window.fb.db, `groups/${gid}`));
             }
@@ -521,7 +512,6 @@
         } 
     }
 
-    // 4. УЛУЧШЕННЫЙ ЭКСПОРТ ДЛЯ WPS (ЦВЕТА И ФОРМАТИРОВАНИЕ ЧЕРЕЗ HTML-XLS)
     function exportWPS() { 
         let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head><meta charset="utf-8"><style>
@@ -629,7 +619,6 @@
         reader.readAsText(file,'UTF-8');
     }
 
-    // 5. ИМПОРТ ВСЕЙ БАЗЫ (JSON) - теперь работает через Firebase
     function importFullDB(file) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -638,11 +627,9 @@
                 if(data.groups && data.users) {
                     if(!confirm('Это заменит ВСЮ текущую базу данных (игроков, группы, пользователей). Продолжить?')) return;
                     
-                    // Загружаем пользователей локально
                     users = data.users;
                     localStorage.setItem('error_journal_users', JSON.stringify(users));
                     
-                    // Загружаем группы в Firebase
                     if(window.fb && currentUser && currentUser.role !== 'viewer') {
                         Object.entries(data.groups).forEach(([id, g]) => {
                             const fbData = {
@@ -659,7 +646,6 @@
                         });
                         showToast('База данных успешно импортирована в облако! Перезагрузка...','УСПЕШНО');
                     } else {
-                        // Fallback для гостя или если Firebase не загружен
                         groups = data.groups;
                         Object.values(groups).forEach(g => { 
                             g.dates = (g.dates||[]).map(d => new Date(d)); 
@@ -720,7 +706,6 @@
         };
     }
 
-    // 1. АНИМАЦИЯ ПЕЧАТАНИЯ ИМЕНИ
     function typeWriterEffect(element, text, speed = 40) {
         element.textContent = '';
         let i = 0;
@@ -764,7 +749,6 @@
             </tr>`;
         }).join(''); 
         
-        // Запуск анимации печатания для всех имен в таблице
         document.querySelectorAll('.player-name-text').forEach(el => {
             if(!el.dataset.typed) {
                 el.dataset.typed = "true";
@@ -917,7 +901,6 @@
         setTimeout(()=>document.addEventListener('click',window._closeHandler),10); 
     }
 
-    // 3. КОММЕНТАРИИ К ИГРОКАМ (НЕ К СТАТУСАМ)
     window.showPlayerCommentModal = function(playerName) {
         const existing = playerComments[playerName] || '';
         const overlay = document.createElement('div');
@@ -1126,7 +1109,6 @@
         cal.querySelectorAll('.calendar-photo-attach').forEach(el=>{el.onclick=(e)=>{e.stopPropagation();playClickSound();const date=new Date(el.closest('.calendar-day').dataset.date);showPhotoGallery(getDateKey(date));};}); 
     }
 
-    // 2. МИНИ-КАЛЕНДАРЬ ПРИ КЛИКЕ НА ЧАСЫ/ДАТУ
     function showMiniCalendar(e) {
         e.stopPropagation();
         closePopup();
@@ -1196,8 +1178,6 @@
     function manualBackup() { const blob=new Blob([JSON.stringify({groups,users,timestamp:new Date().toISOString()},null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`cordis_die_backup_${new Date().toISOString().slice(0,10)}.json`; a.click(); showToast('Бэкап скачан','БЭКАП'); playSuccessSound(); addLog('БЭКАП_СКАЧАН',new Date().toLocaleString('ru')); }
     
     function loadData() { 
-        // Данные теперь загружаются из Firebase через loadFromFirebase()
-        // localStorage используется только для логов и глобальных заметок
         const l=localStorage.getItem('error_journal_log'); if(l) { try{actionLog=JSON.parse(l);}catch(e){actionLog=[];} }
     }
     
@@ -1255,7 +1235,6 @@
         }, 40);
     }
 
-    // ИНТЕГРАЦИЯ ОКНА ПРИВЕТСТВИЯ ПОСЛЕ ВХОДА
     function showWelcomeScreen() {
         const app = document.getElementById('app');
         const hour = new Date().getHours();
@@ -1335,7 +1314,6 @@
         const isAdmin=currentUser.role==='admin',isViewer=currentUser.role==='viewer'; 
         app.innerHTML=`<div class="app-container"><div class="tabs-container"><button class="tab-terminal active" data-tab="journal"><i class="fa-solid fa-book"></i> ЖУРНАЛ</button><button class="tab-terminal" data-tab="calendar"><i class="fa-solid fa-calendar-days"></i> КАЛЕНДАРЬ</button>${isAdmin?'<button class="tab-terminal" data-tab="admin"><i class="fa-solid fa-user-shield"></i> УПРАВЛЕНИЕ</button>':''}<button class="tab-terminal" data-tab="history"><i class="fa-solid fa-clock-rotate-left"></i> ИСТОРИЯ</button></div><div class="terminal-card"><div class="error-header"><h1><span class="decode-title" id="mainTitle">${ORIGINAL_TITLE}</span></h1><div class="header-right"><div class="stats-terminal"><div class="stat-block"><span class="stat-label"><i class="fa-solid fa-users"></i> ИГРОКИ</span><span class="stat-value">${PLAYERS.length}</span></div><div class="stat-block"><span class="stat-label"><i class="fa-solid fa-calendar"></i> ДНИ</span><span class="stat-value">${dates.length}</span></div><div class="stat-block"><span class="stat-label"><i class="fa-solid fa-layer-group"></i> ГРУППА</span><span class="stat-value">${groups[currentGroup].name}</span></div></div><div class="header-time" id="sysTime" title="Нажмите для мини-календаря">${formatDateTime()}</div><div style="display:flex;gap:10px;"><button class="error-btn" id="soundToggle">${soundEnabled?'<i class="fa-solid fa-volume-high"></i>':'<i class="fa-solid fa-volume-xmark"></i>'}</button><button class="error-btn" id="logoutBtn"><i class="fa-solid fa-right-from-bracket"></i> ВЫХОД</button></div></div></div><div id="groupsBar" class="groups-bar"></div><div id="filtersBar" class="filters-bar"></div><input type="file" id="fileInput" class="file-input" accept=".csv"><div id="journalTab" class="tab-content">${!isViewer?`<div style="padding:20px;display:flex;gap:15px;flex-wrap:wrap;border-bottom:1px solid var(--border-dim);"><div class="input-wrapper"><input type="text" id="newPlayerName" class="terminal-input" placeholder="ИМЯ ИГРОКА"></div><button class="error-btn" id="addPlayerBtn"><i class="fa-solid fa-user-plus"></i> ДОБАВИТЬ</button><button class="error-btn" id="addDayBtn"><i class="fa-solid fa-calendar-plus"></i> +ДЕНЬ</button><span style="color:var(--text-muted);font-size:11px;display:flex;align-items:center;gap:5px;"><i class="fa-solid fa-info-circle"></i> Перетащи игрока • Shift+клик на дату</span></div>`:''}<div style="padding:20px;display:flex;gap:15px;flex-wrap:wrap;border-bottom:1px solid var(--border-dim);"><div class="input-wrapper"><input type="text" id="searchInput" class="terminal-input" placeholder="ПОИСК"></div><button class="error-btn" id="searchBtn"><i class="fa-solid fa-magnifying-glass"></i> ПОИСК</button><button class="error-btn" id="clearSearchBtn"><i class="fa-solid fa-eraser"></i> ОЧИСТИТЬ</button></div><div class="virtual-scroll-container"><table class="memory-dump-table" id="diaryTable"><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table></div><div style="padding:20px;border-top:1px solid var(--border-dim);display:flex;gap:15px;flex-wrap:wrap;">${Object.entries(STATUS_MAP).map(([k,v])=>`<div style="display:flex;align-items:center;gap:8px;"><span class="status-${v.class}" style="padding:5px 10px;display:flex;align-items:center;gap:5px;"><i class="fa-solid ${v.icon}" style="color:${v.color};"></i> ${v.display}</span><span style="color:var(--text-muted);font-size:12px;">${v.full}</span></div>`).join('')}</div></div><div id="calendarTab" class="tab-content hidden"><div id="calendarContent" class="calendar-container"></div></div>${isAdmin?'<div id="adminTab" class="tab-content hidden"><div id="adminContent" style="padding:20px;"></div></div>':''}</div></div><div class="notes-button" id="notesToggle"><i class="fa-solid fa-comment"></i></div><div class="notes-panel" id="notesPanel"><textarea class="notes-textarea" id="globalNotes" placeholder="Заметки куратора...">${globalNotes}</textarea><button class="error-btn" id="saveNotesBtn" style="width:100%;"><i class="fa-solid fa-floppy-disk"></i> СОХРАНИТЬ</button></div>`; 
         
-        // 2. Привязка мини-календаря к часам
         document.getElementById('sysTime').onclick = showMiniCalendar;
 
         renderGroupsBar(); 
@@ -1352,7 +1330,7 @@
         document.getElementById('saveNotesBtn').onclick=()=>{globalNotes=document.getElementById('globalNotes').value;localStorage.setItem('error_global_notes',globalNotes);document.getElementById('notesPanel').classList.remove('show');showToast('Заметки сохранены','УСПЕШНО');playSuccessSound();addLog('ЗАМЕТКИ_СОХРАНЕНЫ','Глобальные заметки');}; 
         document.getElementById('soundToggle').onclick=function(){soundEnabled=!soundEnabled;this.innerHTML=soundEnabled?'<i class="fa-solid fa-volume-high"></i>':'<i class="fa-solid fa-volume-xmark"></i>';localStorage.setItem('error_sound',soundEnabled);if(soundEnabled)initAudio();playClickSound();showToast(soundEnabled?'Звук включён':'Звук выключен','ИНФО');}; 
         document.getElementById('logoutBtn').onclick=()=>{
-            if(fbUnsubscribe) fbUnsubscribe(); // Отписываемся от Firebase при выходе
+            if(fbUnsubscribe) fbUnsubscribe();
             localStorage.removeItem('error_journal_user');
             currentUser=null;
             render();
@@ -1389,7 +1367,7 @@
         const app=document.getElementById('app'); 
         if(!currentUser) { 
             app.innerHTML=`<div class="login-screen"><h2><i class="fa-solid fa-lock"></i> ДОСТУП К ТЕРМИНАЛУ</h2><input type="text" id="loginInput" class="login-input" placeholder="ЛОГИН"><input type="password" id="passwordInput" class="login-input" placeholder="ПАРОЛЬ"><button class="login-btn" id="loginBtn"><i class="fa-solid fa-right-to-bracket"></i> ВОЙТИ</button><button class="guest-btn" id="guestBtn"><i class="fa-solid fa-user-secret"></i> ГОСТЬ</button><div id="loginError" style="color:#ff0000;margin-top:10px;"></div></div>`; 
-            document.getElementById('loginBtn').onclick=()=>{initAudio();const l=document.getElementById('loginInput').value,p=document.getElementById('passwordInput').value;const u=users.find(x=>x.login===l&&decode(x.password)===p);if(u){currentUser={...u,password:undefined};localStorage.setItem('error_journal_user',JSON.stringify({id:u.id,login:u.login,role:u.role}));loadData(); showWelcomeScreen(); showToast(`Добро пожаловать, ${u.login}`,'УСПЕШНО');playSuccessSound();addLog('ВХОД_В_СИСТЕМУ',u.login); // Миграция данных при первом входе
+            document.getElementById('loginBtn').onclick=()=>{initAudio();const l=document.getElementById('loginInput').value,p=document.getElementById('passwordInput').value;const u=users.find(x=>x.login===l&&decode(x.password)===p);if(u){currentUser={...u,password:undefined};localStorage.setItem('error_journal_user',JSON.stringify({id:u.id,login:u.login,role:u.role}));loadData(); showWelcomeScreen(); showToast(`Добро пожаловать, ${u.login}`,'УСПЕШНО');playSuccessSound();addLog('ВХОД_В_СИСТЕМУ',u.login);
                 migrateLocalStorageToFirebase();
             }else{document.getElementById('loginError').innerText='[ОШИБКА] ДОСТУП ЗАПРЕЩЕН';playErrorSound();}}; 
             document.getElementById('guestBtn').onclick=()=>{currentUser={role:'viewer',login:'ГОСТЬ'};loadData(); showWelcomeScreen(); showToast('Гостевой режим','ИНФО');playClickSound();}; 
