@@ -467,24 +467,10 @@
         }
     }
 
-        function loadGroup(gid) { 
-        console.log(`[LOAD GROUP] Loading group: ${gid}`);
-        const g = groups[gid]; if(!g) { console.warn(`[LOAD GROUP] Group ${gid} not found!`); return; } 
-        
-        // Сохраняем текущие локальные данные перед перезаписью (на случай если Firebase еще не ответил)
-        const localPlayers = [...PLAYERS];
-        const localDates = [...dates];
-        
+    function loadGroup(gid) { 
+        const g = groups[gid]; if(!g) return; 
         PLAYERS=g.players||[]; dates=(g.dates||[]).map(d=>new Date(d)); matrix=g.matrix||[]; dateNotes=g.dateNotes||{}; datePhotos=g.photos||{}; statusComments=g.comments||{}; playerComments=g.playerComments||{}; currentGroup=gid; 
-        
-        console.log(`[LOAD GROUP] Local data before FB sync: ${localPlayers.length} players, ${localDates.length} dates`);
-        
-        if(dates.length===0) { 
-            console.log(`[LOAD GROUP] No local dates, creating initial dates`);
-            dates=createInitialDates(); 
-        } 
-        
-        console.log(`[LOAD GROUP] Calling loadFromFirebase for group: ${gid}`);
+        if(dates.length===0) { dates=createInitialDates(); } 
         loadFromFirebase();
     }
 
@@ -1427,24 +1413,24 @@
     } else {
         setTimeout(initParticles, 100);
     }
-    // ... (твой предыдущий код) ...
+    // === ПРИНУДИТЕЛЬНАЯ АВТОЗАГРУЗКА С ПОВТОРНЫМИ ПОПЫТКАМИ ===
+    let autoLoadAttempts = 0;
+    const maxAttempts = 10; // Пробуем 10 раз с интервалом 500мс (всего 5 секунд)
     
-    loadUsers(); loadSession(); render();
-    if(document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initParticles);
-    } else {
-        setTimeout(initParticles, 100);
-    }
-
-    // === ВСТАВЛЯТЬ ВОТ СЮДА ===
-    setTimeout(() => {
-        if (window.fb && window.fbReady) {
-            console.log("[AUTO-LOAD] Firebase ready, forcing data load for group 'default'");
+    function forceLoadFromFirebase() {
+        autoLoadAttempts++;
+        console.log(`[AUTO-LOAD] Attempt ${autoLoadAttempts}/${maxAttempts}...`);
+        
+        if (window.fb && window.fb.db) {
+            console.log("[AUTO-LOAD] Firebase found! Subscribing to data...");
+            
             const groupRef = window.fb.ref(window.fb.db, `groups/default`);
             window.fb.onValue(groupRef, (snapshot) => {
                 const data = snapshot.val();
-                console.log("[AUTO-LOAD] Received data:", data ? "YES" : "NULL");
-                if (data) {
+                console.log("[AUTO-LOAD] Data received:", data ? `YES (${data.players?.length || 0} players)` : "NULL/EMPTY");
+                
+                if (data && data.players) {
+                    // Обновляем глобальные переменные
                     PLAYERS = data.players || [];
                     matrix = data.matrix || [];
                     dates = (data.dates || []).map(t => new Date(t));
@@ -1452,25 +1438,47 @@
                     datePhotos = data.photos || {};
                     statusComments = data.comments || {};
                     playerComments = data.playerComments || {};
+                    
+                    // Синхронизируем объект groups
                     if(groups['default']) {
-                        groups['default'].players = PLAYERS;
-                        groups['default'].matrix = matrix;
-                        groups['default'].dates = dates;
-                        groups['default'].dateNotes = dateNotes;
-                        groups['default'].photos = datePhotos;
-                        groups['default'].comments = statusComments;
-                        groups['default'].playerComments = playerComments;
+                        Object.assign(groups['default'], {
+                            players: PLAYERS, matrix, dates, dateNotes, 
+                            photos: datePhotos, comments: statusComments, 
+                            playerComments
+                        });
                     }
+                    
+                    // Перерисовываем интерфейс, если он уже есть на странице
                     if (document.getElementById('tableBody')) {
+                        console.log("[AUTO-LOAD] UI detected. Re-rendering table...");
                         renderTable();
                         renderCalendar();
                         renderGroupsBar();
+                        showToast("Данные загружены из облака", "УСПЕШНО");
+                    } else {
+                        console.log("[AUTO-LOAD] UI not ready yet. Data stored in memory.");
                     }
+                } else {
+                    console.warn("[AUTO-LOAD] No valid data found in 'groups/default'");
                 }
+            }, (error) => {
+                console.error("[AUTO-LOAD] Subscription error:", error);
             });
+            
+        } else {
+            if (autoLoadAttempts < maxAttempts) {
+                console.warn(`[AUTO-LOAD] Firebase not ready. Retrying in 500ms...`);
+                setTimeout(forceLoadFromFirebase, 500);
+            } else {
+                console.error("[AUTO-LOAD] FAILED after 10 attempts. Check Firebase connection.");
+            }
         }
-    }, 1000);
-    // === КОНЕЦ ВСТАВКИ ===
+    }
+
+    // Запускаем первую попытку через 1 секунду после старта
+    setTimeout(forceLoadFromFirebase, 1000);
+    // === КОНЕЦ АВТОЗАГРУЗКИ ===
+
 })();
 </script>
 </body>
