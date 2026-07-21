@@ -78,7 +78,7 @@
         .memory-dump-table td { padding:10px 8px; text-align:center; border:1px solid var(--border-dim); cursor:pointer; transition:background 0.2s, box-shadow 0.25s; background:var(--bg-secondary); position:relative; }
         .memory-dump-table tr { animation:rowFadeIn 0.3s ease; }
         @keyframes rowFadeIn { from { opacity:0; } to { opacity:1; } }
-        .memory-dump-table td:first-child { background:var(--bg-tertiary); font-weight:bold; color:var(--warning-yellow); position:sticky; left:0; z-index:50; transition:background 0.2s; cursor:grab; text-align: left; padding-left: 15px; min-width: 180px; width: 180px; }
+        .memory-dump-table td:first-child { background:var(--bg-tertiary); font-weight:bold; color:var(--warning-yellow); position:sticky; left:0; z-index:50; transition:background 0.2s; cursor:grab; text-align: left; padding-left: 15px; min-width: 250px; width: auto; white-space: nowrap; }
         .memory-dump-table td:first-child:active { cursor:grabbing; }
         .memory-dump-table tr.dragging td { opacity:0.4; background:var(--bg-primary) !important; }
         .memory-dump-table tr.drag-over td:first-child { border-top:3px solid var(--glitch-cyan) !important; box-shadow:0 -3px 10px rgba(0,255,255,0.5); }
@@ -1637,7 +1637,7 @@
                                 </select>
                             </td>
                             <td>${u.createdAt?.slice(0,10)||'—'}</td>
-                            <td style="display:flex;gap:5px;">
+                            <td style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center; min-width:160px;">
                                 <button class="error-btn reset-pass" data-id="${u.id}"><i class="fa-solid fa-key"></i> СБРОС</button>
                                 ${u.id !== users[0].id ? `<button class="error-btn delete-user" data-id="${u.id}"><i class="fa-solid fa-trash"></i> УДАЛИТЬ</button>` : ''}
                             </td>
